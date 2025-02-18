@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "31802:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "31801:8080"
+    environment:
+      - FLAG=SCIST{WC_5c1St_Sc0r3bo4rD_1s5u3}

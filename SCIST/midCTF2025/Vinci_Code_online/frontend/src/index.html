@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Ultimate Number Game</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			background-color: #f0f0f0;
+			margin: 0;
+			padding: 20px;
+		}
+
+		.game-container {
+			max-width: 600px;
+			margin: 0 auto;
+			background: white;
+			padding: 20px;
+			border-radius: 8px;
+			box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		}
+
+		.game-header {
+			text-align: center;
+			margin-bottom: 20px;
+		}
+
+		.game-status {
+			margin: 15px 0;
+			padding: 10px;
+			border-radius: 4px;
+			text-align: center;
+		}
+
+		.attempts {
+			font-weight: bold;
+			color: #666;
+		}
+
+		.message {
+			padding: 10px;
+			margin: 10px 0;
+			border-radius: 4px;
+		}
+
+		.message.error {
+			background-color: #ffe6e6;
+			color: #721c24;
+		}
+
+		.message.success {
+			background-color: #e6ffe6;
+			color: #155724;
+		}
+
+		.input-container {
+			display: flex;
+			gap: 10px;
+			margin: 20px 0;
+		}
+
+		input[type="number"] {
+			flex: 1;
+			padding: 8px;
+			font-size: 16px;
+			border: 2px solid #ddd;
+			border-radius: 4px;
+		}
+
+		button {
+			padding: 8px 16px;
+			font-size: 16px;
+			color: white;
+			background-color: #007bff;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+
+		button:hover {
+			background-color: #0056b3;
+		}
+
+		button:disabled {
+			background-color: #cccccc;
+			cursor: not-allowed;
+		}
+
+		.history {
+			margin-top: 20px;
+			padding: 10px;
+			background-color: #f8f9fa;
+			border-radius: 4px;
+		}
+
+		.history-entry {
+			padding: 8px;
+			border-bottom: 1px solid #dee2e6;
+		}
+
+		.history-entry:last-child {
+			border-bottom: none;
+		}
+
+		.history-entry.flag {
+			background-color: #e6ffe6;
+			font-weight: bold;
+			color: #155724;
+			border: 1px solid #c3e6cb;
+			margin: 5px 0;
+		}
+
+		#newGameBtn {
+			display: none;
+			margin: 20px auto;
+			background-color: #28a745;
+		}
+
+		#newGameBtn:hover {
+			background-color: #218838;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="game-container">
+		<div class="game-header">
+			<h1>Da Vinci Code online </h1>
+			<p>Guess the number between 0 and 10000!</p>
+		</div>
+
+		<div class="game-status">
+			<div class="attempts">Remaining Attempts: <span id="attempts">3</span></div>
+			<div id="message" class="message"></div>
+		</div>
+
+		<div class="input-container">
+			<input type="number" id="guessInput" min="0" max="10000" placeholder="Enter your guess">
+			<button id="guessBtn">Guess!</button>
+		</div>
+
+		<button id="newGameBtn" onclick="location.reload()">Start New Game</button>
+
+		<div class="history">
+			<h3>Game History</h3>
+			<div id="historyContainer"></div>
+		</div>
+	</div>
+
+	<script>
+		let ws;
+		let remainingAttempts = 3;
+		let isGameOver = false;
+
+		function initGame() {
+			ws = new WebSocket('ws://lab.scist.org:31801');
+
+			ws.onopen = () => {
+				showMessage('Connected to game server!', 'success');
+			};
+
+			ws.onmessage = (event) => {
+				const response = JSON.parse(event.data);
+				handleGameResponse(response);
+			};
+
+			ws.onclose = () => {
+				showMessage('Disconnected from game server', 'error');
+			};
+
+			document.getElementById('guessBtn').onclick = makeGuess;
+			document.getElementById('guessInput').onkeypress = (e) => {
+				if (e.key === 'Enter') makeGuess();
+			};
+		}
+
+		function handleGameResponse(response) {
+			addToHistory(response.message);
+
+			if (response.status === 'win') {
+				if (response.flag) {
+					addToHistory(response.flag, true);
+				}
+				gameOver(response.message, true);
+			} else if (response.status === 'lose') {
+				gameOver(response.message, false);
+			} else if (response.status === 'continue') {
+				remainingAttempts--;
+				updateAttempts();
+				showMessage(response.message, 'normal');
+			}
+		}
+
+		function makeGuess() {
+			if (isGameOver) return;
+
+			const input = document.getElementById('guessInput');
+			const guess = parseInt(input.value);
+
+			if (isNaN(guess) || guess < 0 || guess > 10000) {
+				showMessage('Please enter a valid number between 0 and 10000', 'error');
+				return;
+			}
+
+			ws.send(JSON.stringify({
+				type: 'guess',
+				number: guess
+			}));
+
+			input.value = '';
+		}
+
+		function updateAttempts() {
+			document.getElementById('attempts').textContent = remainingAttempts;
+		}
+
+		function showMessage(text, type) {
+			const messageEl = document.getElementById('message');
+			messageEl.textContent = text;
+			messageEl.className = 'message ' + type;
+		}
+
+		function addToHistory(text, isFlag = false) {
+			const historyContainer = document.getElementById('historyContainer');
+			const entry = document.createElement('div');
+			entry.className = 'history-entry' + (isFlag ? ' flag' : '');
+
+			if (isFlag) {
+				entry.textContent = `FLAG: ${text}`;
+			} else {
+				entry.textContent = text;
+			}
+
+			historyContainer.insertBefore(entry, historyContainer.firstChild);
+		}
+
+		function gameOver(message, isWin) {
+			isGameOver = true;
+			showMessage(message, isWin ? 'success' : 'error');
+			document.getElementById('guessBtn').disabled = true;
+			document.getElementById('guessInput').disabled = true;
+			document.getElementById('newGameBtn').style.display = 'block';
+		}
+
+		initGame();
+	</script>
+</body>
+
+</html>
